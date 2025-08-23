@@ -1,0 +1,37 @@
+# Dépendances Python pour OWASP ZAP Scanner
+# Installez avec: pip install -r requirements.txt
+
+# === DÉPENDANCES PRINCIPALES ===
+# Client API OWASP ZAP officiel
+zaproxy==0.4.0
+
+# FastAPI et serveur ASGI
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
+# Requêtes HTTP
+requests>=2.31.0
+urllib3>=2.0.0
+
+# Gestion des configurations
+python-dotenv>=1.0.0
+
+# Parsing et validation des données
+pyyaml>=6.0.1
+
+# === DÉPENDANCES OPTIONNELLES ===
+# Logging avancé
+colorlog>=6.7.0
+
+# === DÉVELOPPEMENT UNIQUEMENT ===
+# Tests unitaires
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Formatage de code
+black>=23.0.0
+flake8>=6.0.0
+
+# Documentation
+mkdocs>=1.5.0
+mkdocs-material>=9.1.0
