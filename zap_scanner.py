@@ -24,19 +24,26 @@ logger = logging.getLogger(__name__)
 
 
 class ZAPAutomatedScanner:
-    def __init__(self, zap_proxy_url='http://127.0.0.1:8080', api_key="changeme"):
+    def __init__(self, zap_proxy_url='http://127.0.0.1:8080', api_key="changeme", debug_mode=False):
         """
         Initialise le scanner ZAP automatisé
         
         Args:
             zap_proxy_url: URL du proxy ZAP (par défaut localhost:8080)
-            api_key: Clé API ZAP (requir)
+            api_key: Clé API ZAP (requis)
+            debug_mode: Active les logs détaillés (défaut: False)
         """
         self.zap_proxy_url = zap_proxy_url
         self.api_key = api_key
+        self.debug_mode = debug_mode
         self.zap = ZAPv2(proxies={'http': zap_proxy_url, 'https': zap_proxy_url}, apikey=api_key)
         self.context_id = None
         self.user_id = None
+        
+        # Ajuster le niveau de logging si debug_mode est activé
+        if debug_mode:
+            logger.setLevel(logging.DEBUG)
+            logger.info("🐛 Mode debug activé - logs détaillés")
         
         # Configuration par défaut
         self.target_url = "https://localhost:3000"  # URL corrigée pour votre serveur local
@@ -174,7 +181,12 @@ class ZAPAutomatedScanner:
             logger.info("🕷️  Lancement du spider...")
             logger.info('Spidering target {}'.format(self.target_url))
             
-            # Lancer le spider avec l'utilisateur authentifié
+            # Configuration du spider pour les SPA/React
+            # Activer le spider AJAX pour les applications JavaScript
+            self.zap.ajaxSpider.set_option_browser_id('firefox-headless')
+            self.zap.ajaxSpider.set_option_max_duration('5')  # 5 minutes max
+            
+            # Lancer le spider classique d'abord
             scan_id = self.zap.spider.scan_as_user(
                 url=self.target_url,
                 contextid=self.context_id,
@@ -183,33 +195,76 @@ class ZAPAutomatedScanner:
                 subtreeonly=False,
             )
             
-            logger.info(f"Spider ID: {scan_id}")
+            logger.info(f"Spider classique ID: {scan_id}")
             
-            # Attendre la fin du spider
-            while int(self.zap.spider.status(scan_id)) < 100:
+            # Attendre la fin du spider classique avec timeout
+            timeout_counter = 0
+            max_timeout = 60  # 10 minutes max
+            
+            while int(self.zap.spider.status(scan_id)) < 100 and timeout_counter < max_timeout:
                 progress = self.zap.spider.status(scan_id)
-                logger.info(f"Spider progression: {progress}%")
-                time.sleep(5)
+                logger.info(f"Spider classique progression: {progress}%")
+                time.sleep(10)
+                timeout_counter += 1
             
-            # Récupérer les résultats
             spider_results = self.zap.spider.results(scan_id)
-            logger.info(f"✓ Spider terminé ")
-            # Construction du dictionnaire
+            logger.info(f"✓ Spider classique terminé - {len(spider_results)} URLs trouvées")
+            
+            # Lancer le spider AJAX pour les applications SPA/React
+            logger.info("🕸️  Lancement du spider AJAX (pour React/SPA)...")
+            ajax_scan_id = self.zap.ajaxSpider.scan_as_user(
+                url=self.target_url,
+                contextname="AuthenticatedScan",
+                username=self.username
+            )
+            
+            logger.info(f"Spider AJAX ID: {ajax_scan_id}")
+            
+            # Attendre le spider AJAX
+            timeout_counter = 0
+            while self.zap.ajaxSpider.status == 'running' and timeout_counter < max_timeout:
+                logger.info("Spider AJAX en cours...")
+                time.sleep(15)
+                timeout_counter += 1
+            
+            # Récupérer les résultats AJAX
+            ajax_results = self.zap.ajaxSpider.results()
+            logger.info(f"✓ Spider AJAX terminé - {len(ajax_results)} URLs supplémentaires")
+            
+            # Combiner les résultats
+            all_results = list(set(spider_results + ajax_results))  # Éliminer les doublons
+            
             result_json = {
-                "id": scan_id,
-                "nombre_liens": len(spider_results),
-                "liens": spider_results
+                "spider_id": scan_id,
+                "ajax_spider_id": ajax_scan_id,
+                "total_urls": len(all_results),
+                "spider_classique": len(spider_results),
+                "spider_ajax": len(ajax_results),
+                "urls": all_results
             }
 
-            # Affichage (facultatif, en format JSON bien lisible)
-            logger.info(json.dumps(result_json, indent=2, ensure_ascii=False))
+            logger.info(f"📊 RÉSULTATS SPIDER COMBINÉ:")
+            logger.info(f"   • Spider classique: {len(spider_results)} URLs")
+            logger.info(f"   • Spider AJAX: {len(ajax_results)} URLs") 
+            logger.info(f"   • Total unique: {len(all_results)} URLs")
 
-            # Retourner le JSON
-            return result_json["id"] 
+
+            # Affichage détaillé (facultatif, en format JSON bien lisible)
+            if logger.level <= logging.DEBUG:  # Seulement si le niveau de log est DEBUG
+                logger.debug("📋 DÉTAILS COMPLETS DU SPIDER:")
+                logger.debug(json.dumps(result_json, indent=2, ensure_ascii=False))
+            
+            return scan_id  # Retourner l'ID du spider principal
             
         except Exception as e:
             logger.info(f"✗ Erreur lors du spider: {e}")
-            return None
+            # En cas d'erreur AJAX, continuer avec le spider classique seulement
+            try:
+                spider_results = self.zap.spider.results(scan_id)
+                logger.info(f"⚠️  Fallback: utilisation du spider classique seulement ({len(spider_results)} URLs)")
+                return scan_id
+            except:
+                return None
     
     def active_scan(self):
         """Lance le scan actif de vulnérabilités"""
@@ -243,13 +298,13 @@ class ZAPAutomatedScanner:
             logger.info(f"✗ Erreur lors du scan actif: {e}")
             return None
     
-    def generate_reports(self):
+    def generate_reports(self, scan_id):
         """Génère les rapports de scan"""
         try:
-            #timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # CORRECTION: Utiliser le scan_id passé en paramètre au lieu d'appeler active_scan()
             
             # Rapport HTML
-            html_report_path = self.output_dir / f"zap_report_{self.active_scan()}.html"
+            html_report_path = self.output_dir / f"zap_report_{scan_id}.html"
             logger.info(f"📄 Génération du rapport HTML: {html_report_path}")
             
             html_report = self.zap.core.htmlreport(apikey=self.api_key)
@@ -257,7 +312,7 @@ class ZAPAutomatedScanner:
                 f.write(html_report)
             
             # Rapport JSON pour analyse programmatique
-            json_report_path = self.output_dir / f"zap_report_{self.active_scan()}.json"
+            json_report_path = self.output_dir / f"zap_report_{scan_id}.json"
             logger.info(f"📄 Génération du rapport JSON: {json_report_path}")
             
             json_report = self.zap.core.jsonreport(apikey=self.api_key)
@@ -326,8 +381,8 @@ class ZAPAutomatedScanner:
             if scan_id is None:
                 return False
             
-            # 6. Générer les rapports
-            report_info = self.generate_reports()
+            # 6. Générer les rapports - CORRECTION: Passer le scan_id
+            report_info = self.generate_reports(scan_id)
             if report_info is None:
                 return False
             
