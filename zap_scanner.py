@@ -231,23 +231,50 @@ class ZAPAutomatedScanner:
             ajax_results = self.zap.ajaxSpider.results()
             logger.info(f"✓ Spider AJAX terminé - {len(ajax_results)} URLs supplémentaires")
             
-            # Combiner les résultats
-            all_results = list(set(spider_results + ajax_results))  # Éliminer les doublons
+            # Normaliser les résultats AJAX (peuvent être des dicts ou des strings)
+            normalized_ajax_results = []
+            for result in ajax_results:
+                if isinstance(result, dict):
+                    # Si c'est un dict, prendre l'URL ou la première valeur string
+                    url = result.get('url') or result.get('uri') or str(result)
+                    normalized_ajax_results.append(url)
+                else:
+                    # Si c'est déjà une string
+                    normalized_ajax_results.append(str(result))
+            
+            # Combiner les résultats - Éviter set() avec des types mixtes
+            all_results = []
+            all_urls_seen = []
+            
+            # Ajouter les résultats du spider classique
+            for url in spider_results:
+                url_str = str(url)
+                if url_str not in all_urls_seen:
+                    all_results.append(url_str)
+                    all_urls_seen.append(url_str)
+            
+            # Ajouter les résultats AJAX normalisés
+            for url in normalized_ajax_results:
+                url_str = str(url)
+                if url_str not in all_urls_seen:
+                    all_results.append(url_str)
+                    all_urls_seen.append(url_str)
             
             result_json = {
                 "spider_id": scan_id,
                 "ajax_spider_id": ajax_scan_id,
                 "total_urls": len(all_results),
                 "spider_classique": len(spider_results),
-                "spider_ajax": len(ajax_results),
+                "spider_ajax": len(normalized_ajax_results),
                 "urls": all_results
             }
 
             logger.info(f"📊 RÉSULTATS SPIDER COMBINÉ:")
             logger.info(f"   • Spider classique: {len(spider_results)} URLs")
-            logger.info(f"   • Spider AJAX: {len(ajax_results)} URLs") 
+            logger.info(f"   • Spider AJAX: {len(normalized_ajax_results)} URLs") 
             logger.info(f"   • Total unique: {len(all_results)} URLs")
 
+            
 
             # Affichage détaillé (facultatif, en format JSON bien lisible)
             if logger.level <= logging.DEBUG:  # Seulement si le niveau de log est DEBUG
