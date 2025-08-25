@@ -7,7 +7,7 @@ import glob
 import json
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict
 from dotenv import load_dotenv
 
 # Charger les variables d'environnement
@@ -81,12 +81,113 @@ class QuickScanRequest(BaseModel):
     username: Optional[str] = Field(default=None, min_length=1)
     password: Optional[str] = Field(default=None, min_length=1)
 
+class ReportInfo(BaseModel):
+    """Modèle pour les informations d'un rapport"""
+    report_id: str
+    scan_id: Optional[str]
+    filename: str
+    file_type: str  # "html" ou "json"
+    size: int
+    created_at: str
+    target_url: Optional[str]
+
 # Stockage en mémoire des scans
 scans = {}
 
 def get_config_value(request_value, env_default, fallback):
     """Utilitaire pour récupérer une valeur avec priorité : request > env > fallback"""
     return request_value or env_default or fallback
+
+def extract_report_id_from_filename(filename: str) -> str:
+    """Extrait l'ID du rapport depuis le nom de fichier"""
+    # Assume que les fichiers suivent le format: scan_YYYYMMDD_HHMMSS_hash.ext
+    base_name = os.path.splitext(filename)[0]
+    return base_name
+
+def get_all_reports() -> List[Dict]:
+    """Récupère tous les rapports disponibles dans le dossier zap_reports, groupés par report_id"""
+    reports_dict = {}
+    reports_dir = Config.REPORTS_DIR
+    
+    if not os.path.exists(reports_dir):
+        return []
+    
+    # Chercher tous les fichiers HTML et JSON
+    for file_type in ["html", "json"]:
+        pattern = os.path.join(reports_dir, f"*.{file_type}")
+        files = glob.glob(pattern)
+        
+        for file_path in files:
+            try:
+                filename = os.path.basename(file_path)
+                report_id = extract_report_id_from_filename(filename)
+                file_stats = os.stat(file_path)
+                created_at = datetime.fromtimestamp(file_stats.st_ctime).isoformat()
+                
+                # Si c'est la première fois qu'on voit ce report_id, l'initialiser
+                if report_id not in reports_dict:
+                    # Essayer de trouver le scan_id correspondant
+                    scan_id = None
+                    target_url = None
+                    for sid, scan_data in scans.items():
+                        if scan_data.get("report") and report_id in scan_data["report"]:
+                            scan_id = sid
+                            target_url = scan_data.get("config", {}).get("target_url")
+                            break
+                    
+                    reports_dict[report_id] = {
+                        "report_id": report_id,
+                        "scan_id": scan_id,
+                        "target_url": target_url,
+                        "created_at": created_at,
+                        "formats_available": [],
+                        "files": []
+                    }
+                
+                # Ajouter le fichier à la liste
+                reports_dict[report_id]["formats_available"].append(file_type)
+                reports_dict[report_id]["files"].append({
+                    "type": file_type,
+                    "filename": filename,
+                    "size": file_stats.st_size,
+                    "created_at": created_at
+                })
+                
+                # Garder la date la plus récente comme date de création du rapport
+                if created_at > reports_dict[report_id]["created_at"]:
+                    reports_dict[report_id]["created_at"] = created_at
+                    
+            except Exception as e:
+                logger.warning(f"Erreur lors du traitement du fichier {file_path}: {e}")
+                continue
+    
+    # Convertir en liste et trier par date de création (plus récent en premier)
+    reports = list(reports_dict.values())
+    reports.sort(key=lambda x: x["created_at"], reverse=True)
+    
+    return reports
+
+def find_report_file(report_id: str, file_type: str = None) -> Optional[str]:
+    """Trouve le fichier de rapport correspondant à l'ID"""
+    reports_dir = Config.REPORTS_DIR
+    
+    if not os.path.exists(reports_dir):
+        return None
+    
+    # Si file_type est spécifié, chercher seulement ce type
+    if file_type:
+        pattern = os.path.join(reports_dir, f"{report_id}.{file_type}")
+        files = glob.glob(pattern)
+        return files[0] if files else None
+    
+    # Sinon, chercher HTML et JSON
+    for ext in ["html", "json"]:
+        pattern = os.path.join(reports_dir, f"{report_id}.{ext}")
+        files = glob.glob(pattern)
+        if files:
+            return files[0]
+    
+    return None
 
 @app.post("/scan", summary="Démarrer un nouveau scan de sécurité")
 async def start_scan(req: ScanRequest, background_tasks: BackgroundTasks):
@@ -145,7 +246,7 @@ async def start_scan(req: ScanRequest, background_tasks: BackgroundTasks):
                 
                 scans[scan_id].update({
                     "status": "completed" if success else "failed",
-                    "report_dir": str(scanner.output_dir),
+                    "report": str(scanner.output_dir),
                     "completed_at": datetime.now().isoformat()
                 })
                 
@@ -168,37 +269,120 @@ async def start_scan(req: ScanRequest, background_tasks: BackgroundTasks):
         logger.error(f"Erreur lors de l'initialisation: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Erreur interne: {str(e)}")
 
-@app.post("/quick-scan", summary="Démarrer un scan avec configuration par défaut")
-async def quick_scan(req: QuickScanRequest, background_tasks: BackgroundTasks):
+@app.get("/reports", summary="Lister tous les rapports disponibles")
+async def list_reports() -> Dict:
     """
-    Lance un scan rapide en utilisant principalement les valeurs du fichier .env.
-    Utile pour tester rapidement votre application de développement.
+    Récupère la liste de tous les rapports disponibles avec leurs métadonnées.
     """
     try:
-        # Vérifier que les valeurs essentielles sont disponibles
-        if not Config.DEFAULT_ZAP_API_KEY:
+        reports = get_all_reports()
+        return {
+            "total": len(reports),
+            "reports": reports
+        }
+    except Exception as e:
+        logger.error(f"Erreur lors de la récupération des rapports: {e}")
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la récupération des rapports: {str(e)}")
+
+@app.get("/reports/{report_id}/html", summary="Télécharger un rapport HTML par ID")
+async def get_report_html(report_id: str):
+    """
+    Télécharge le rapport HTML correspondant à l'ID spécifié.
+    """
+    try:
+        file_path = find_report_file(report_id, "html")
+        
+        if not file_path:
             raise HTTPException(
-                status_code=400,
-                detail="ZAP_API_KEY manquante dans le fichier .env"
+                status_code=404, 
+                detail=f"Rapport HTML avec l'ID '{report_id}' non trouvé"
             )
         
-        # Construire la requête complète avec les valeurs par défaut
-        full_request = ScanRequest(
-            target_url=req.target_url or Config.DEFAULT_TARGET_URL,
-            login_url=req.login_url or Config.DEFAULT_LOGIN_URL,
-            username=req.username or Config.DEFAULT_USERNAME,
-            password=req.password or Config.DEFAULT_PASSWORD,
-            username_param=Config.DEFAULT_USERNAME_PARAM,
-            password_param=Config.DEFAULT_PASSWORD_PARAM,
-            zap_proxy_url=Config.DEFAULT_ZAP_PROXY_URL,
-            zap_api_key=Config.DEFAULT_ZAP_API_KEY
+        if not os.path.exists(file_path):
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Fichier de rapport '{report_id}' introuvable sur le disque"
+            )
+        
+        return FileResponse(
+            file_path,
+            media_type="text/html",
+            filename=os.path.basename(file_path)
         )
         
-        return await start_scan(full_request, background_tasks)
-        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Erreur quick-scan: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
+        logger.error(f"Erreur lors de la récupération du rapport HTML {report_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Erreur interne: {str(e)}")
+
+@app.get("/reports/{report_id}/json", summary="Obtenir un rapport JSON par ID")
+async def get_report_json(report_id: str):
+    """
+    Récupère le rapport JSON correspondant à l'ID spécifié.
+    """
+    try:
+        file_path = find_report_file(report_id, "json")
+        
+        if not file_path:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Rapport JSON avec l'ID '{report_id}' non trouvé"
+            )
+        
+        if not os.path.exists(file_path):
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Fichier de rapport '{report_id}' introuvable sur le disque"
+            )
+        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            json_content = json.load(f)
+        
+        file_stats = os.stat(file_path)
+        modified_datetime = datetime.fromtimestamp(file_stats.st_mtime)
+        
+        return JSONResponse(content={
+            "metadata": {
+                "report_id": report_id,
+                "filename": os.path.basename(file_path),
+                "file_size": file_stats.st_size,
+                "modified": modified_datetime.isoformat(),
+            },
+            "report": json_content
+        })
+        
+    except HTTPException:
+        raise
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="Fichier JSON corrompu")
+    except Exception as e:
+        logger.error(f"Erreur lors de la récupération du rapport JSON {report_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Erreur interne: {str(e)}")
+
+@app.get("/reports/{report_id}", summary="Obtenir les métadonnées d'un rapport par ID")
+async def get_report_info(report_id: str):
+    """
+    Récupère les métadonnées d'un rapport spécifique par son ID.
+    """
+    try:
+        reports = get_all_reports()
+        
+        # Chercher le rapport avec l'ID correspondant
+        for report in reports:
+            if report["report_id"] == report_id:
+                return report
+        
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Rapport avec l'ID '{report_id}' non trouvé"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erreur lors de la récupération des infos du rapport {report_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Erreur interne: {str(e)}")
 
 @app.get("/config", summary="Afficher la configuration actuelle")
 async def get_config():
@@ -238,54 +422,6 @@ async def get_scan_status(scan_id: str):
 @app.get("/scans", summary="Lister tous les scans")
 async def list_scans():
     return {"total": len(scans), "scans": scans}
-
-@app.get("/last-report/html", summary="Télécharger le dernier rapport HTML")
-def get_last_report_html():
-    reports_dir = Config.REPORTS_DIR
-    if not os.path.exists(reports_dir):
-        raise HTTPException(status_code=404, detail="Dossier de rapports introuvable")
-    
-    files = glob.glob(os.path.join(reports_dir, "*.html"))
-    if not files:
-        raise HTTPException(status_code=404, detail="Aucun rapport HTML trouvé")
-    
-    latest_file = max(files, key=os.path.getmtime)
-    return FileResponse(
-        latest_file,
-        media_type="text/html",
-        filename=os.path.basename(latest_file)
-    )
-
-@app.get("/last-report/json", summary="Obtenir le dernier rapport JSON")
-def get_last_report_json():
-    reports_dir = Config.REPORTS_DIR
-    if not os.path.exists(reports_dir):
-        raise HTTPException(status_code=404, detail="Dossier de rapports introuvable")
-    
-    files = glob.glob(os.path.join(reports_dir, "*.json"))
-    if not files:
-        raise HTTPException(status_code=404, detail="Aucun rapport JSON trouvé")
-    
-    latest_file = max(files, key=os.path.getmtime)
-    
-    try:
-        with open(latest_file, 'r', encoding='utf-8') as f:
-            json_content = json.load(f)
-        
-        file_stats = os.stat(latest_file)
-        modified_datetime = datetime.fromtimestamp(file_stats.st_mtime)
-        
-        return JSONResponse(content={
-            "metadata": {
-                "filename": os.path.basename(latest_file),
-                "file_size": file_stats.st_size,
-                "modified": modified_datetime.isoformat(),
-            },
-            "report": json_content
-        })
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
 
 @app.get("/health", summary="Vérification de l'état de l'API")
 async def health_check():

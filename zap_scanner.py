@@ -13,9 +13,15 @@ from zapv2 import ZAPv2
 import requests
 import json
 import urllib3
+import logging
 
 # Désactiver les warnings SSL pour les certificats auto-signés
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Configuration du logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 class ZAPAutomatedScanner:
     def __init__(self, zap_proxy_url='http://127.0.0.1:8080', api_key="changeme"):
@@ -48,10 +54,10 @@ class ZAPAutomatedScanner:
         """Vérifie que ZAP est accessible"""
         try:
             version = self.zap.core.version
-            print(f"✓ Connexion ZAP établie - Version: {version}")
+            logger.info(f"✓ Connexion ZAP établie - Version: {version}")
             return True
         except Exception as e:
-            print(f"✗ Erreur de connexion à ZAP: {e}")
+            logger.info(f"✗ Erreur de connexion à ZAP: {e}")
             return False
     
     def setup_context_and_auth(self, contextname="AuthenticatedScan"):
@@ -62,7 +68,7 @@ class ZAPAutomatedScanner:
                 existing_contexts = self.zap.context.context_list
                 for ctx in existing_contexts:
                     if ctx == contextname:
-                        print(f"🗑️  Suppression du contexte existant: {contextname}")
+                        logger.info(f"🗑️  Suppression du contexte existant: {contextname}")
                         self.zap.context.remove_context(contextname, apikey=self.api_key)
                         time.sleep(2)
                         break
@@ -70,14 +76,14 @@ class ZAPAutomatedScanner:
                 pass  # Ignore si le contexte n'existe pas
             
             # Créer un nouveau contexte
-            print(f"🔧 Création du contexte: {contextname}")
+            logger.info(f"🔧 Création du contexte: {contextname}")
             self.context_id = self.zap.context.new_context(contextname, apikey=self.api_key)
             
             # Inclure l'URL cible dans le contexte
             self.zap.context.include_in_context(contextname, f"{self.target_url}.*", apikey=self.api_key)
             
             # Configuration de l'authentification par formulaire
-            print("🔐 Configuration de l'authentification par formulaire")
+            logger.info("🔐 Configuration de l'authentification par formulaire")
             
             # Définir la méthode d'authentification (form-based)
             auth_method_config = f"loginUrl={self.login_url}&loginRequestData={self.username_param}%3D%7B%25username%25%7D%26{self.password_param}%3D%7B%25password%25%7D"
@@ -90,7 +96,7 @@ class ZAPAutomatedScanner:
             )
             
             # Créer un utilisateur pour l'authentification
-            print("👤 Création de l'utilisateur d'authentification")
+            logger.info("👤 Création de l'utilisateur d'authentification")
             self.user_id = self.zap.users.new_user(self.context_id, self.username, apikey=self.api_key)
             
             # Configurer les credentials de l'utilisateur
@@ -102,17 +108,17 @@ class ZAPAutomatedScanner:
                 apikey=self.api_key
             )
 
-            print("✓ Contexte et authentification configurés")
+            logger.info("✓ Contexte et authentification configurés")
             return True
             
         except Exception as e:
-            print(f"✗ Erreur lors de la configuration: {e}")
+            logger.info(f"✗ Erreur lors de la configuration: {e}")
             return False
     
     def perform_authentication(self):
         """Effectue l'authentification"""
         try:
-            print("🔑 Authentification en cours...")
+            logger.info("🔑 Authentification en cours...")
             
             # Activer l'utilisateur
             self.zap.users.set_user_enabled(
@@ -128,7 +134,7 @@ class ZAPAutomatedScanner:
             )
             self.zap.forcedUser.set_forced_user_mode_enabled(True)
             
-            print(f"✓ Utilisateur {self.username} activé pour le contexte {self.context_id}")
+            logger.info(f"✓ Utilisateur {self.username} activé pour le contexte {self.context_id}")
                 
             # Attendre un peu pour stabiliser
             time.sleep(3)
@@ -142,31 +148,31 @@ class ZAPAutomatedScanner:
                     verify=False  # Ignorer la vérification SSL pour les certificats auto-signés
                 )
                 if response.status_code == 200:
-                    print("✓ Authentification réussie")
+                    logger.info("✓ Authentification réussie")
                     return True
                 else:
-                    print(f"⚠️  Réponse HTTP: {response.status_code}")
+                    logger.info(f"⚠️  Réponse HTTP: {response.status_code}")
                     return True  # Continuer même si le statut n'est pas 200
             except requests.exceptions.SSLError as ssl_error:
-                print(f"⚠️  Erreur SSL ignorée: {ssl_error}")
-                print("✓ Authentification configurée (SSL ignoré)")
+                logger.info(f"⚠️  Erreur SSL ignorée: {ssl_error}")
+                logger.info("✓ Authentification configurée (SSL ignoré)")
                 return True
             except Exception as e:
-                print(f"⚠️  Erreur de connexion: {e}")
-                print("✓ Authentification configurée (erreur ignorée)")
+                logger.info(f"⚠️  Erreur de connexion: {e}")
+                logger.info("✓ Authentification configurée (erreur ignorée)")
                 return True
 
             return True
             
         except Exception as e:
-            print(f"✗ Erreur d'authentification: {e}")
+            logger.info(f"✗ Erreur d'authentification: {e}")
             return False
     
     def spider_scan(self):
         """Lance le spider pour découvrir les URLs"""
         try:
-            print("🕷️  Lancement du spider...")
-            print('Spidering target {}'.format(self.target_url))
+            logger.info("🕷️  Lancement du spider...")
+            logger.info('Spidering target {}'.format(self.target_url))
             
             # Lancer le spider avec l'utilisateur authentifié
             scan_id = self.zap.spider.scan_as_user(
@@ -177,17 +183,17 @@ class ZAPAutomatedScanner:
                 subtreeonly=False,
             )
             
-            print(f"Spider ID: {scan_id}")
+            logger.info(f"Spider ID: {scan_id}")
             
             # Attendre la fin du spider
             while int(self.zap.spider.status(scan_id)) < 100:
                 progress = self.zap.spider.status(scan_id)
-                print(f"Spider progression: {progress}%")
+                logger.info(f"Spider progression: {progress}%")
                 time.sleep(5)
             
             # Récupérer les résultats
             spider_results = self.zap.spider.results(scan_id)
-            print(f"✓ Spider terminé ")
+            logger.info(f"✓ Spider terminé ")
             # Construction du dictionnaire
             result_json = {
                 "id": scan_id,
@@ -196,19 +202,19 @@ class ZAPAutomatedScanner:
             }
 
             # Affichage (facultatif, en format JSON bien lisible)
-            print(json.dumps(result_json, indent=2, ensure_ascii=False))
+            logger.info(json.dumps(result_json, indent=2, ensure_ascii=False))
 
             # Retourner le JSON
-            return result_json 
+            return result_json["id"] 
             
         except Exception as e:
-            print(f"✗ Erreur lors du spider: {e}")
+            logger.info(f"✗ Erreur lors du spider: {e}")
             return None
     
     def active_scan(self):
         """Lance le scan actif de vulnérabilités"""
         try:
-            print("🔍 Lancement du scan actif...")
+            logger.info("🔍 Lancement du scan actif...")
             
             # Lancer le scan actif avec l'utilisateur authentifié
             scan_id = self.zap.ascan.scan_as_user(
@@ -222,37 +228,37 @@ class ZAPAutomatedScanner:
                 apikey=self.api_key
             )
             
-            print(f"Scan actif ID: {scan_id}")
+            logger.info(f"Scan actif ID: {scan_id}")
             
             # Suivre la progression
             while int(self.zap.ascan.status(scan_id)) < 100:
                 progress = self.zap.ascan.status(scan_id)
-                print(f"Scan actif progression: {progress}%")
+                logger.info(f"Scan actif progression: {progress}%")
                 time.sleep(10)
             
-            print("✓ Scan actif terminé")
+            logger.info("✓ Scan actif terminé")
             return scan_id
             
         except Exception as e:
-            print(f"✗ Erreur lors du scan actif: {e}")
+            logger.info(f"✗ Erreur lors du scan actif: {e}")
             return None
     
     def generate_reports(self):
         """Génère les rapports de scan"""
         try:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            #timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             
             # Rapport HTML
-            html_report_path = self.output_dir / f"zap_report_{timestamp}.html"
-            print(f"📄 Génération du rapport HTML: {html_report_path}")
+            html_report_path = self.output_dir / f"zap_report_{self.active_scan()}.html"
+            logger.info(f"📄 Génération du rapport HTML: {html_report_path}")
             
             html_report = self.zap.core.htmlreport(apikey=self.api_key)
             with open(html_report_path, 'w', encoding='utf-8') as f:
                 f.write(html_report)
             
             # Rapport JSON pour analyse programmatique
-            json_report_path = self.output_dir / f"zap_report_{timestamp}.json"
-            print(f"📄 Génération du rapport JSON: {json_report_path}")
+            json_report_path = self.output_dir / f"zap_report_{self.active_scan()}.json"
+            logger.info(f"📄 Génération du rapport JSON: {json_report_path}")
             
             json_report = self.zap.core.jsonreport(apikey=self.api_key)
             with open(json_report_path, 'w', encoding='utf-8') as f:
@@ -263,10 +269,10 @@ class ZAPAutomatedScanner:
             high_alerts = [alert for alert in alerts if alert['risk'] == 'High']
             medium_alerts = [alert for alert in alerts if alert['risk'] == 'Medium']
             
-            print(f"\n📊 RÉSUMÉ DU SCAN:")
-            print(f"   • Alertes HAUTE gravité: {len(high_alerts)}")
-            print(f"   • Alertes MOYENNE gravité: {len(medium_alerts)}")
-            print(f"   • Total alertes: {len(alerts)}")
+            logger.info(f"\n📊 RÉSUMÉ DU SCAN:")
+            logger.info(f"   • Alertes HAUTE gravité: {len(high_alerts)}")
+            logger.info(f"   • Alertes MOYENNE gravité: {len(medium_alerts)}")
+            logger.info(f"   • Total alertes: {len(alerts)}")
             
             return {
                 'html_report': html_report_path,
@@ -276,24 +282,24 @@ class ZAPAutomatedScanner:
             }
             
         except Exception as e:
-            print(f"✗ Erreur lors de la génération des rapports: {e}")
+            logger.info(f"✗ Erreur lors de la génération des rapports: {e}")
             return None
     
     def cleanup(self):
         """Nettoie les ressources ZAP"""
         try:
-            print("🧹 Nettoyage...")
+            logger.info("🧹 Nettoyage...")
             if self.context_id:
                 # Correction: utiliser self.api_key au lieu de self.api
                 self.zap.context.remove_context(self.context_id, apikey=self.api_key)
-            print("✓ Nettoyage terminé")
+            logger.info("✓ Nettoyage terminé")
         except Exception as e:
-            print(f"⚠️  Erreur lors du nettoyage: {e}")
+            logger.info(f"⚠️  Erreur lors du nettoyage: {e}")
     
     def run_full_scan(self):
         """Exécute le scan complet automatisé"""
-        print("🚀 DÉMARRAGE DU SCAN AUTOMATISÉ ZAP")
-        print("="*50)
+        logger.info("🚀 DÉMARRAGE DU SCAN AUTOMATISÉ ZAP")
+        logger.info("="*50)
         
         start_time = datetime.now()
         
@@ -329,18 +335,18 @@ class ZAPAutomatedScanner:
             end_time = datetime.now()
             duration = end_time - start_time
             
-            print("\n" + "="*50)
-            print("🎉 SCAN TERMINÉ AVEC SUCCÈS!")
-            print(f"⏱️  Durée totale: {duration}")
-            print(f"📁 Rapports sauvegardés dans: {self.output_dir}")
-            print(f"🚨 Alertes haute gravité: {report_info['high_alerts']}")
+            logger.info("\n" + "="*50)
+            logger.info("🎉 SCAN TERMINÉ AVEC SUCCÈS!")
+            logger.info(f"⏱️  Durée totale: {duration}")
+            logger.info(f"📁 Rapports sauvegardés dans: {self.output_dir}")
+            logger.info(f"🚨 Alertes haute gravité: {report_info['high_alerts']}")
             
             
-            # Retourner le code de sortie selon les vulnérabilités trouvées
-            return report_info['high_alerts'] == 0  # True si pas de vulns critiques
+            # Retourner le code de sortie selon le rapport
+            return report_info is not None # True si le rapport est généré
             
         except Exception as e:
-            print(f"💥 Erreur critique: {e}")
+            logger.info(f"💥 Erreur critique: {e}")
             return False
         finally:
             self.cleanup()
