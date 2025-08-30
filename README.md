@@ -1,84 +1,73 @@
 # Scanner de Sécurité OWASP ZAP Automatisé
 
-Un outil d'automatisation pour effectuer des scans de sécurité avec OWASP ZAP, incluant l'authentification par formulaire et une API REST pour l'intégration CI/CD.
+Un outil d'automatisation conteneurisé pour effectuer des scans de sécurité avec OWASP ZAP, incluant l'authentification par formulaire et une API REST pour l'intégration CI/CD.
+
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat&logo=fastapi&logoColor=white)
+![OWASP ZAP](https://img.shields.io/badge/OWASP_ZAP-00549E?style=flat&logo=owasp&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)
 
 ## 🔧 Fonctionnalités
 
-- **Scan automatisé complet** : Spider + Scan actif avec authentification
-- **Gestion de l'authentification** : Support des formulaires de connexion
-- **API REST** : Interface pour déclencher des scans à distance
-- **Configuration flexible** : Fichier .env pour la gestion sécurisée des paramètres
-- **Rapports multiples** : Génération de rapports HTML et JSON
-- **Gestion SSL** : Support des certificats auto-signés
-- **Documentation interactive** : Interface Swagger/OpenAPI automatique
+- **🐳 Conteneurisation complète** : Déploiement Docker avec docker-compose
+- **🕷️ Scan automatisé complet** : Spider classique et AJAX + Scan actif avec authentification
+- **🔐 Gestion de l'authentification** : Support des formulaires de connexion
+- **🚀 API REST** : Interface FastAPI pour déclencher des scans à distance
+- **⚙️ Configuration flexible** : Fichier `.env` pour la gestion sécurisée des paramètres
+- **📊 Rapports multiples** : Génération de rapports HTML et JSON
+- **🔒 Gestion SSL** : Support des certificats auto-signés
+- **📚 Documentation interactive** : Interface Swagger/OpenAPI automatique
+- **🔄 Intégration CI/CD** : API REST pour pipelines d'automatisation
 
 ## 📁 Structure du Projet
 
 ```
 zap-scanner/
-├── .env.example            # Template de configuration
-├── .env                    # Configuration (ne pas commiter)
-├── .gitignore             # Fichiers à ignorer par Git
-├── zap_scanner.py         # Script principal de scan
-├── api_zap.py             # API REST FastAPI
-├── requirements.txt       # Dépendances Python
-├── zap_reports/           # Dossier des rapports générés (ignoré par Git)
-├── README.md              # Ce fichier
-└── docs/                  # Documentation additionnelle (optionnel)
+├── 📄 .env.example               # Template de configuration
+├── 🔒 .env                       # Configuration (ne pas commiter)
+├── 🚫 .gitignore                # Fichiers à ignorer par Git
+├── 🐳 Dockerfile               # Image Docker pour l'API
+├── 🐙 docker-compose.yml       # Orchestration des services
+├── 🐍 zap_scanner.py           # Script principal de scan
+├── 🌐 api_server.py            # API REST FastAPI
+├── 📦 requirements.txt         # Dépendances Python
+├── 📁 zap_reports/             # Dossier des rapports générés
+└── 📖 README.md               # Ce fichier
 ```
 
-## 🚀 Installation
+## 🚀 Installation et Déploiement
 
 ### Prérequis
 
-1. **OWASP ZAP** installé et fonctionnel
-   - Télécharger depuis [zaproxy.org](https://www.zaproxy.org/download/)
-   - Version recommandée : 2.12.0 ou plus récente
+- **Docker** 20.10+ et **Docker Compose** v2
+- **Ports disponibles** : 8080 (ZAP), 8093 (API)
+- **Serveur distant** avec accès SSH (optionnel)
 
-2. **Python 3.7+** installé
-
-### Installation Rapide
+### 1. Préparation de l'Environnement
 
 ```bash
-# 1. Cloner ou télécharger le projet
+# Cloner ou télécharger le projet
+git clone <votre-repo> zap-scanner
 cd zap-scanner
 
-# 2. Installer les dépendances
-pip install -r requirements.txt
-
-# 3. Configurer l'environnement
-cp .env.example .env
-# Éditer le fichier .env avec vos vraies valeurs
-
-# 4. Démarrer OWASP ZAP
-zap.sh -daemon -host 127.0.0.1 -port 8080 -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
-
-# 5. Lancer l'API
-python api_zap.py
-```
-
-## ⚙️ Configuration
-
-### 1. Fichier .env
-
-Créez un fichier `.env` à partir du template :
-
-```bash
+# Créer le fichier de configuration
 cp .env.example .env
 ```
+
+### 2. Configuration (.env)
 
 Éditez le fichier `.env` avec vos paramètres :
 
 ```env
 # === Configuration OWASP ZAP ===
-ZAP_PROXY_URL=http://127.0.0.1:8080
-ZAP_API_KEY=your-zap-api-key-here
+ZAP_PROXY_URL=http://zap:8080
+ZAP_API_KEY="votre-clé-api-zap-ici"
 
 # === Configuration Application de Test ===
-TARGET_URL=https://localhost:3000
-LOGIN_URL=https://localhost:3000/login
-TEST_USERNAME=testuser
-TEST_PASSWORD=testpass
+TARGET_URL=https://votre-application.com
+LOGIN_URL=https://votre-application.com/login
+TEST_USERNAME=utilisateur_test
+TEST_PASSWORD=mot_de_passe_test
 USERNAME_PARAM=username
 PASSWORD_PARAM=password
 
@@ -92,64 +81,123 @@ REPORTS_DIR=zap_reports
 MAX_REPORTS_RETENTION=30
 ```
 
-### 2. Obtenir la Clé API ZAP
+### 3. Déploiement avec Docker Compose
 
-#### Méthode 1: Via l'interface ZAP
-1. Ouvrir OWASP ZAP GUI
-2. Aller dans **Tools** → **Options** → **API**
-3. Cliquer sur **Generate API Key**
-4. Copier la clé dans votre fichier `.env`
+#### Démarrage des Services
 
-#### Méthode 2: Via l'API
 ```bash
-curl http://127.0.0.1:8080/JSON/core/view/generateApiKey/
+# Construire et démarrer tous les services
+docker-compose up -d --build
+
+# Vérifier que les services sont actifs
+docker-compose ps
+
+# Suivre les logs en temps réel
+docker-compose logs -f
+
+# Logs d'un service spécifique
+docker-compose logs -f zap-api
+docker-compose logs -f zap
 ```
 
-### 3. Démarrer OWASP ZAP
+#### Vérification du Déploiement
 
-#### Mode Daemon (Recommandé pour l'automatisation)
 ```bash
-# Linux/Mac
-zap.sh -daemon -host 127.0.0.1 -port 8080 -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
+# Vérifier la santé de l'API
+curl http://localhost:8093/health
 
-# Windows
-zap.bat -daemon -host 127.0.0.1 -port 8080 -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
+# Vérifier que ZAP fonctionne
+curl http://localhost:8080/JSON/core/view/version/
 ```
 
-#### Mode GUI (Pour le développement)
+### 4. Accès aux Services
+
+- **API FastAPI** : `http://localhost:8093` (ou `http://votre-serveur:8093`)
+- **Documentation Swagger** : `http://localhost:8093/docs`
+- **OWASP ZAP Proxy** : `http://localhost:8080`
+
+## ⚙️ Configuration Avancée
+
+### Génération de la Clé API ZAP
+
+La clé API ZAP est désactivée dans la configuration Docker pour simplifier l'usage. Si vous souhaitez l'activer :
+
+1. **Modifier le docker-compose.yml** :
+```yaml
+# Remplacer dans la commande ZAP :
+-config api.disablekey=true
+# Par :
+-config api.key=votre-cle-api-securisee
+```
+
+2. **Générer une clé API** :
 ```bash
-zap.sh -host 127.0.0.1 -port 8080 -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
+# Générer une clé aléatoirement
+openssl rand -base64 32
+
+# Ou utiliser l'API ZAP une fois démarré
+curl http://localhost:8080/JSON/core/action/generateApiKey/
+```
+
+### Personnalisation des Ports
+
+Si les ports par défaut sont occupés, modifiez le `docker-compose.yml` :
+
+```yaml
+services:
+  zap-api:
+    ports:
+      - "8094:8000"  # Changer le port externe
+  zap:
+    ports:
+      - "8081:8080"  # Changer le port ZAP externe
 ```
 
 ## 🎯 Utilisation
 
+### Mode Local avec ZAP Installé
+
+Si vous avez OWASP ZAP installé localement sur votre PC :
+
+```bash
+# 1. Démarrer ZAP en mode daemon
+zap.sh -daemon -host 127.0.0.1 -port 8080 -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
+
+# 2. Configurer le .env pour pointer vers ZAP local
+ZAP_PROXY_URL=http://127.0.0.1:8080
+
+# 3. Exécuter le scanner directement
+python zap_scanner.py
+
+# 4. Ou démarrer seulement l'API FastAPI
+python api_server.py
+```
+
 ### Mode API REST (Recommandé)
 
-#### 1. Démarrer l'API
+#### 1. Vérifier la Configuration
+
 ```bash
-python api_zap.py
+# Voir la configuration actuelle
+curl http://localhost:8093/config
+
+# Vérifier l'état de santé
+curl http://localhost:8093/health
 ```
 
-L'API sera accessible sur `http://localhost:8000`
+#### 2. Lancer un Scan Rapide
 
-#### 2. Documentation Interactive
-Accédez à la documentation Swagger : `http://localhost:8000/docs`
-
-#### 3. Vérifier la Configuration
 ```bash
-curl http://localhost:8000/config
-```
-
-#### 4. Scan Rapide (avec valeurs .env)
-```bash
-curl -X POST "http://localhost:8000/quick-scan" \
+# Scan avec les paramètres du fichier .env
+curl -X POST "http://localhost:8093/quick-scan" \
      -H "Content-Type: application/json" \
      -d "{}"
 ```
 
-#### 5. Scan Personnalisé
+#### 3. Lancer un Scan Personnalisé
+
 ```bash
-curl -X POST "http://localhost:8000/scan" \
+curl -X POST "http://localhost:8093/scan" \
      -H "Content-Type: application/json" \
      -d '{
        "target_url": "https://example.com",
@@ -161,60 +209,137 @@ curl -X POST "http://localhost:8000/scan" \
      }'
 ```
 
-#### 6. Suivre le Scan
+#### 4. Suivre un Scan en Cours
+
 ```bash
-# Obtenir le scan_id de la réponse précédente
-curl "http://localhost:8000/scan/{scan_id}"
+# Lister tous les scans
+curl http://localhost:8093/scans
+
+# Suivre un scan spécifique
+curl http://localhost:8093/scan/{scan_id}
 ```
 
-#### 7. Récupérer les Rapports
-```bash
-# Rapport JSON via API
-curl "http://localhost:8000/last-report/json"
+#### 5. Récupérer les Rapports
 
-# Télécharger le rapport HTML
-curl -O "http://localhost:8000/last-report/html"
+```bash
+# Lister tous les rapports disponibles
+curl http://localhost:8093/reports
+
+# Télécharger le rapport HTML le plus récent
+curl -O http://localhost:8093/reports/{report_id}/html
+
+# Récupérer le rapport JSON
+curl http://localhost:8093/reports/{report_id}/json
 ```
 
-### Mode Script Direct
+### Mode Script Direct (dans le conteneur)
 
-```python
+```bash
+# Exécuter le scanner directement
+docker-compose exec zap-api python zap_scanner.py
+
+# Ou avec des paramètres personnalisés
+docker-compose exec zap-api python -c "
 from zap_scanner import ZAPAutomatedScanner
-
-def main():
-    scanner = ZAPAutomatedScanner(
-        zap_proxy_url="http://127.0.0.1:8080",
-        api_key="votre-cle-api"
-    )
-    
-    # Configuration
-    scanner.target_url = "https://votre-app.com"
-    scanner.login_url = "https://votre-app.com/login"
-    scanner.username = "testuser"
-    scanner.password = "testpass"
-    
-    # Lancer le scan
-    success = scanner.run_full_scan()
-    return success
-
-if __name__ == "__main__":
-    import sys
-    sys.exit(0 if main() else 1)
+scanner = ZAPAutomatedScanner('http://zap:8080')
+scanner.target_url = 'https://votre-app.com'
+scanner.run_full_scan()
+"
 ```
 
-## 📊 Endpoints API
+## 📊 Endpoints API Disponibles
 
 | Méthode | Endpoint | Description |
 |---------|----------|-------------|
-| `GET` | `/docs` | Documentation Swagger interactive |
-| `GET` | `/health` | État de santé de l'API |
-| `GET` | `/config` | Configuration actuelle (sans secrets) |
-| `POST` | `/scan` | Démarrer un scan personnalisé |
-| `POST` | `/quick-scan` | Scan rapide avec config .env |
-| `GET` | `/scan/{scan_id}` | Statut d'un scan spécifique |
-| `GET` | `/scans` | Liste de tous les scans |
-| `GET` | `/last-report/html` | Télécharger dernier rapport HTML |
-| `GET` | `/last-report/json` | Dernier rapport JSON via API |
+| `GET` | `/docs` | 📚 Documentation Swagger interactive |
+| `GET` | `/health` | 🏥 État de santé de l'API |
+| `GET` | `/config` | ⚙️ Configuration actuelle (sans secrets) |
+| `POST` | `/scan` | 🔍 Démarrer un scan personnalisé |
+| `GET` | `/scan/{scan_id}` | 📈 Statut d'un scan spécifique |
+| `GET` | `/scans` | 📋 Liste de tous les scans |
+| `GET` | `/reports` | 📄 Liste de tous les rapports |
+| `GET` | `/reports/{report_id}/html` | ⬇️ Télécharger rapport HTML |
+| `GET` | `/reports/{report_id}/json` | 📊 Récupérer rapport JSON |
+
+## 🐳 Gestion Docker
+
+### Commandes Utiles
+
+```bash
+# === GESTION DES SERVICES ===
+
+# Démarrer les services
+docker-compose up -d
+
+# Arrêter les services
+docker-compose down
+
+# Redémarrer un service spécifique
+docker-compose restart zap-api
+
+# Reconstruire et redémarrer
+docker-compose up -d --build --force-recreate
+
+# === SURVEILLANCE ===
+
+# Voir les logs en temps réel
+docker-compose logs -f --tail=50
+
+# Logs d'un service spécifique
+docker-compose logs -f zap-api
+docker-compose logs -f zap
+
+# Statut des conteneurs
+docker-compose ps
+
+# Utilisation des ressources
+docker stats
+
+# === MAINTENANCE ===
+
+# Entrer dans le conteneur de l'API
+docker-compose exec zap-api bash
+
+# Entrer dans le conteneur ZAP
+docker-compose exec zap bash
+
+# Voir les volumes
+docker volume ls
+
+# Nettoyer les ressources inutilisées
+docker system prune -f
+
+# Supprimer les images sans nom (dangling)
+docker image prune -f
+
+# Supprimer toutes les images inutilisées
+docker image prune -a -f
+
+# === SAUVEGARDE ET RESTAURATION ===
+
+# Copier les rapports depuis le conteneur
+docker cp $(docker-compose ps -q zap-api):/app/zap_reports ./backup_reports
+
+# Sauvegarder les volumes
+docker run --rm -v zap-scanner_zap_data:/data -v $(pwd):/backup alpine tar czf /backup/zap_data_backup.tar.gz -C /data .
+```
+
+### Monitoring et Debug
+
+```bash
+# Voir les processus dans les conteneurs
+docker-compose exec zap-api ps aux
+docker-compose exec zap ps aux
+
+# Tester la connectivité entre services
+docker-compose exec zap-api curl http://zap:8080/JSON/core/view/version/
+
+# Vérifier les variables d'environnement
+docker-compose exec zap-api env | grep ZAP
+
+# Inspecter la configuration réseau
+docker network inspect zap-scanner_default
+```
 
 ## 📄 Format des Rapports
 
@@ -222,9 +347,10 @@ if __name__ == "__main__":
 ```json
 {
   "metadata": {
+    "report_id": "scan_20240115_143022",
     "filename": "zap_report_20240115_143022.json",
     "file_size": 15234,
-    "generated_at": "2024-01-15 14:30:22"
+    "created_at": "2024-01-15T14:30:22"
   },
   "report": {
     "alerts": [
@@ -241,106 +367,205 @@ if __name__ == "__main__":
 }
 ```
 
+## 🚀 Utilisation sur Serveur Distant
+
+## 🚀 Utilisation sur Serveur Distant
+
+### Méthodes de Transfert des Fichiers
+
+#### Option 1: Transfert Direct (SCP/RSYNC)
+```bash
+# Via SCP
+scp -r zap-scanner/ user@votre-serveur.com:~/
+
+# Via RSYNC (plus efficace pour les mises à jour)
+rsync -avz --exclude='.env' --exclude='zap_reports/' \
+      zap-scanner/ user@votre-serveur.com:~/zap-scanner/
+```
+
+#### Option 2: Via GitHub
+```bash
+# Sur le serveur distant
+git clone https://github.com/votre-utilisateur/zap-scanner.git
+cd zap-scanner
+
+# Pour les mises à jour
+git pull origin main
+```
+
+#### Option 3: Via GitLab
+```bash
+# Sur le serveur distant
+git clone https://gitlab.com/votre-utilisateur/zap-scanner.git
+cd zap-scanner
+
+# Configurer l'authentification si repo privé
+git config credential.helper store
+```
+
+### Déploiement sur Serveur
+
+```bash
+# Se connecter au serveur distant
+ssh user@votre-serveur.com
+
+# Aller dans le répertoire du projet
+cd ~/zap-scanner
+
+# Configurer l'environnement
+cp .env.example .env
+# Éditer .env avec vos paramètres
+
+# Démarrer les services
+docker-compose up -d --build
+
+# Vérifier que l'API est accessible
+# Note: Remplacer 8093 par le port exposé configuré dans docker-compose.yml si modifié
+curl http://votre-serveur.com:8093/health
+```
+
+### Configuration Firewall
+
+```bash
+# Ubuntu/Debian - Ouvrir les ports nécessaires
+sudo ufw allow 8093/tcp  # API FastAPI
+sudo ufw allow 8080/tcp  # ZAP (si accès direct requis)
+
+# CentOS/RHEL
+sudo firewall-cmd --permanent --add-port=8093/tcp
+sudo firewall-cmd --permanent --add-port=8080/tcp
+sudo firewall-cmd --reload
+```
+
+### Utilisation Distante via cURL
+
+```bash
+# Remplacer localhost par l'IP/domaine de votre serveur
+# Note: Ajuster le port si modifié dans docker-compose.yml
+export ZAP_SERVER="http://votre-serveur.com:8093"
+
+# Lancer un scan
+curl -X POST "$ZAP_SERVER/scan" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "target_url": "https://mon-app.com",
+       "login_url": "https://mon-app.com/login",
+       "username": "testuser",
+       "password": "testpass"
+     }'
+
+# Suivre le scan
+curl "$ZAP_SERVER/scans"
+
+# Télécharger le rapport
+curl -O "$ZAP_SERVER/reports/scan_20240115_143022/html"
+```
+
 ## 🔒 Sécurité
 
 ### Bonnes Pratiques
-1. **Ne jamais commiter le fichier `.env`**
-2. **Utiliser des mots de passe forts** pour les comptes de test
-3. **Restreindre l'accès à l'API** en production
-4. **Chiffrer les rapports** contenant des données sensibles
-5. **Nettoyer régulièrement** les anciens rapports
 
-### Variables Sensibles
-Ces informations ne doivent **jamais** être dans votre code :
-- Clés API ZAP
-- Mots de passe de test
-- URLs d'environnements de production
-- Certificats et clés privées
+1. **Variables d'environnement** : Ne jamais commiter le fichier `.env`
+2. **Accès réseau** : Restreindre l'accès aux ports ZAP en production
+3. **Mots de passe** : Utiliser des comptes de test dédiés avec mots de passe forts
+4. **Rapports** : Chiffrer les rapports contenant des données sensibles
+5. **Nettoyage** : Nettoyer régulièrement les anciens rapports
 
-## 🚀 Intégration CI/CD
+### Configuration Sécurisée pour Production
 
-### Exemple GitLab CI
-```yaml
-zap_scan:
-  stage: security_test
-  image: python:3.9
-  services:
-    - name: owasp/zap2docker-stable
-      alias: zap
-  variables:
-    ZAP_PROXY_URL: "http://zap:8080"
-  script:
-    - pip install -r requirements.txt
-    - python -c "
-        import requests, time
-        from api_zap import app
-        # Attendre que ZAP soit prêt
-        for i in range(30):
-            try:
-                requests.get('http://zap:8080')
-                break
-            except:
-                time.sleep(2)
-        # Lancer le scan
-        # ... votre code de scan
-      "
-  artifacts:
-    reports:
-      junit: zap_reports/*.xml
-    paths:
-      - zap_reports/
-    when: always
-```
+```bash
+# Créer un utilisateur dédié
+sudo useradd -m -s /bin/bash zapscanner
+sudo usermod -aG docker zapscanner
 
-### Exemple GitHub Actions
-```yaml
-name: Security Scan
-on: [push, pull_request]
+# Déployer avec des permissions restreintes
+sudo -u zapscanner docker-compose up -d
 
-jobs:
-  zap_scan:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    
-    - name: Setup Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-        
-    - name: Install dependencies
-      run: pip install -r requirements.txt
-      
-    - name: Start ZAP
-      run: |
-        docker run -d --name zap -p 8080:8080 \
-          owasp/zap2docker-stable \
-          zap.sh -daemon -host 0.0.0.0 -port 8080
-          
-    - name: Wait for ZAP
-      run: |
-        timeout 60 sh -c 'until nc -z localhost 8080; do sleep 1; done'
-        
-    - name: Run Security Scan
-      env:
-        ZAP_PROXY_URL: http://localhost:8080
-        ZAP_API_KEY: ${{ secrets.ZAP_API_KEY }}
-        TARGET_URL: ${{ secrets.TARGET_URL }}
-      run: python zap_scanner.py
-      
-    - name: Upload Reports
-      uses: actions/upload-artifact@v3
-      if: always()
-      with:
-        name: zap-reports
-        path: zap_reports/
+# Limiter l'accès réseau (exemple avec iptables)
+sudo iptables -A INPUT -p tcp --dport 8093 -s IP_AUTORISE -j ACCEPT
+sudo iptables -A INPUT -p tcp --dport 8093 -j DROP
 ```
 
 ## 🐛 Dépannage
 
 ### Problèmes Courants
 
-#### 1. Erreur de connexion à ZAP
+#### Service ne démarre pas
 ```bash
-# Vérifier que ZAP fonctionne
-curl http://127.0.0.1:8080/JSON/core/view/
+# Vérifier les logs
+docker-compose logs zap-api
+docker-compose logs zap
+
+# Vérifier les ports
+netstat -tuln | grep -E '8080|8093'
+
+# Redémarrer proprement
+docker-compose down && docker-compose up -d
+```
+
+#### Problèmes de connexion ZAP
+```bash
+# Tester la connectivité
+docker-compose exec zap-api curl http://zap:8080/JSON/core/view/version/
+
+# Vérifier que ZAP est prêt
+docker-compose exec zap netstat -tuln | grep 8080
+```
+
+#### Erreurs SSL/TLS
+```bash
+# Vérifier les certificats dans le conteneur
+docker-compose exec zap-api python -c "
+import requests
+import urllib3
+urllib3.disable_warnings()
+print(requests.get('https://httpbin.org/get', verify=False).status_code)
+"
+```
+
+#### Problèmes de performance
+```bash
+# Monitoring des ressources
+docker stats
+
+# Ajuster les limites dans docker-compose.yml
+services:
+  zap:
+    mem_limit: 2g
+    cpus: '1.0'
+```
+
+### Support et Logs
+
+```bash
+# Collecter tous les logs pour debug
+docker-compose logs --no-color > debug_logs.txt
+
+# Informations système
+docker version
+docker-compose version
+docker system info
+```
+
+## 📚 Ressources Additionnelles
+
+- [Documentation OWASP ZAP](https://www.zaproxy.org/docs/)
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [Docker Compose Reference](https://docs.docker.com/compose/)
+- [ZAP API Documentation](https://www.zaproxy.org/docs/api/)
+
+## 🤝 Contribution
+
+1. Fork le projet
+2. Créer une branche feature (`git checkout -b feature/AmazingFeature`)
+3. Commit vos changements (`git commit -m 'Add some AmazingFeature'`)
+4. Push sur la branche (`git push origin feature/AmazingFeature`)
+5. Ouvrir une Pull Request
+
+## 📝 Licence
+
+Ce projet est sous licence MIT. Voir le fichier `LICENSE` pour plus de détails.
+
+---
+
+**⚠️ Avertissement** : Cet outil est conçu pour tester la sécurité de vos propres applications ou d'applications pour lesquelles vous avez une autorisation explicite. L'utilisation de cet outil sur des applications sans autorisation peut être illégale.
